@@ -35,7 +35,13 @@
   .app { width: 100%; max-width: 480px; }
   header { text-align: center; margin: 12px 0 20px; }
   header .date { font-size: 15px; color: var(--sub); margin-bottom: 4px; }
+  .titlerow { display: flex; align-items: center; justify-content: center; position: relative; }
   header h1 { font-size: 22px; margin: 0; }
+  .manage-btn {
+    position: absolute; right: 0; top: 50%; transform: translateY(-50%);
+    background: none; border: 1px solid var(--border); border-radius: 20px;
+    padding: 6px 12px; font-size: 13px; color: var(--sub);
+  }
   .summary {
     background: var(--accent-soft);
     border-radius: 16px;
@@ -89,6 +95,12 @@
     margin-left: 6px;
     vertical-align: middle;
   }
+  .empty-hint {
+    text-align: center;
+    color: var(--sub);
+    font-size: 14px;
+    padding: 24px 0;
+  }
   .history {
     margin-top: 24px;
   }
@@ -118,6 +130,56 @@
     background: #e9e9e9;
   }
   .dot.on { background: var(--accent); }
+  .manage {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px;
+    margin-bottom: 18px;
+  }
+  .manage.hidden { display: none; }
+  .manage h2 { font-size: 15px; margin: 0 0 12px; }
+  .manage-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .manage-row:last-child { border-bottom: none; }
+  .manage-row .m-icon { width: 28px; text-align: center; font-size: 18px; }
+  .manage-row .m-name { flex: 1; font-size: 14px; }
+  .manage-row button {
+    border: none; background: none; font-size: 16px; padding: 4px 6px; cursor: pointer;
+  }
+  .manage-row .save-btn, .manage-row .cancel-btn {
+    font-size: 13px; border-radius: 8px; padding: 6px 10px;
+  }
+  .manage-row .save-btn { background: var(--accent); color: white; }
+  .manage-row .cancel-btn { background: var(--border); color: var(--text); }
+  .manage-row input[type="text"], .manage-row select {
+    border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; font-size: 14px;
+  }
+  .manage-row .edit-icon { width: 44px; text-align: center; }
+  .manage-row .edit-label { flex: 1; min-width: 0; }
+  .manage-add {
+    display: flex;
+    gap: 6px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+  }
+  .manage-add input[type="text"] {
+    border: 1px solid var(--border); border-radius: 8px; padding: 8px; font-size: 14px;
+  }
+  .manage-add select {
+    border: 1px solid var(--border); border-radius: 8px; padding: 8px; font-size: 14px;
+  }
+  #newIcon { width: 48px; text-align: center; }
+  #newLabel { flex: 1; min-width: 100px; }
+  .manage-add button {
+    background: var(--accent); color: white; border: none; border-radius: 8px;
+    padding: 8px 14px; font-size: 14px;
+  }
   footer {
     text-align: center;
     color: var(--sub);
@@ -130,7 +192,10 @@
 <div class="app">
   <header>
     <div class="date" id="todayLabel"></div>
-    <h1>오늘의 루틴</h1>
+    <div class="titlerow">
+      <h1>오늘의 루틴</h1>
+      <button class="manage-btn" id="manageToggle">⚙️ 관리</button>
+    </div>
   </header>
 
   <div class="summary">
@@ -144,6 +209,20 @@
     </div>
   </div>
 
+  <div id="managePanel" class="manage hidden">
+    <h2>루틴 관리</h2>
+    <div id="manageList"></div>
+    <div class="manage-add">
+      <input id="newIcon" type="text" placeholder="🙂" maxlength="4">
+      <input id="newLabel" type="text" placeholder="루틴 이름">
+      <select id="newFreq">
+        <option value="daily">매일</option>
+        <option value="weekly">매주</option>
+      </select>
+      <button id="addHabitBtn">추가</button>
+    </div>
+  </div>
+
   <div id="habitList"></div>
 
   <div class="history">
@@ -151,11 +230,11 @@
     <div id="historyGrid"></div>
   </div>
 
-  <footer>탭해서 체크 · 데이터는 이 기기에만 저장됩니다</footer>
+  <footer>탭해서 체크 · ⚙ 관리에서 루틴 추가/수정/삭제 · 데이터는 이 기기에만 저장됩니다</footer>
 </div>
 
 <script>
-const HABITS = [
+const DEFAULT_HABITS = [
   { id: 'pullup',  label: '턱걸이 1분',      icon: '💪', freq: 'daily' },
   { id: 'water',   label: '물 500ml',       icon: '💧', freq: 'daily' },
   { id: 'english', label: '영어대화 10분',   icon: '🗣️', freq: 'daily' },
@@ -165,6 +244,7 @@ const HABITS = [
 ];
 
 const STORE_KEY = 'habitTrackerData_v1';
+const HABITS_KEY = 'habitTrackerHabitList_v1';
 
 function loadData() {
   try {
@@ -175,6 +255,21 @@ function loadData() {
 }
 function saveData(data) {
   localStorage.setItem(STORE_KEY, JSON.stringify(data));
+}
+
+function loadHabits() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(HABITS_KEY));
+    if (Array.isArray(saved)) return saved;
+  } catch (e) {}
+  saveHabits(DEFAULT_HABITS);
+  return DEFAULT_HABITS.slice();
+}
+function saveHabits(list) {
+  localStorage.setItem(HABITS_KEY, JSON.stringify(list));
+}
+function makeId() {
+  return 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
 
 function pad(n) { return n < 10 ? '0' + n : '' + n; }
@@ -192,6 +287,8 @@ function weekKey(d) {
 }
 
 let data = loadData();
+let habits = loadHabits();
+let editingId = null;
 const today = new Date();
 const todayKey = dateKey(today);
 const thisWeekKey = weekKey(today);
@@ -252,7 +349,14 @@ function render() {
   list.innerHTML = '';
   let doneCount = 0;
 
-  HABITS.forEach(habit => {
+  if (habits.length === 0) {
+    const hint = document.createElement('div');
+    hint.className = 'empty-hint';
+    hint.textContent = '⚙ 관리에서 루틴을 추가해보세요';
+    list.appendChild(hint);
+  }
+
+  habits.forEach(habit => {
     const done = isDone(habit);
     if (done) doneCount++;
     const streak = habit.freq === 'daily' ? dailyStreak(habit) : weeklyStreak(habit);
@@ -274,10 +378,11 @@ function render() {
     list.appendChild(row);
   });
 
-  document.getElementById('todayPct').textContent = Math.round((doneCount / HABITS.length) * 100) + '%';
+  document.getElementById('todayPct').textContent =
+    habits.length ? Math.round((doneCount / habits.length) * 100) + '%' : '0%';
 
   // week percent: average completion across last 7 days for daily habits + this week's weekly habit
-  const dailyHabits = HABITS.filter(h => h.freq === 'daily');
+  const dailyHabits = habits.filter(h => h.freq === 'daily');
   let weekTotal = 0, weekDone = 0;
   for (let i = 0; i < 7; i++) {
     const d = new Date(today);
@@ -288,7 +393,7 @@ function render() {
       if (data.daily[k] && data.daily[k][h.id]) weekDone++;
     });
   }
-  HABITS.filter(h => h.freq === 'weekly').forEach(h => {
+  habits.filter(h => h.freq === 'weekly').forEach(h => {
     weekTotal++;
     if (isDone(h)) weekDone++;
   });
@@ -300,7 +405,7 @@ function render() {
 function renderHistory() {
   const grid = document.getElementById('historyGrid');
   grid.innerHTML = '';
-  HABITS.forEach(habit => {
+  habits.forEach(habit => {
     const row = document.createElement('div');
     row.className = 'history-row';
     const name = document.createElement('div');
@@ -327,6 +432,104 @@ function renderHistory() {
     grid.appendChild(row);
   });
 }
+
+function toggleManagePanel() {
+  const panel = document.getElementById('managePanel');
+  panel.classList.toggle('hidden');
+  if (!panel.classList.contains('hidden')) renderManage();
+}
+
+function renderManage() {
+  const list = document.getElementById('manageList');
+  list.innerHTML = '';
+
+  habits.forEach(h => {
+    const row = document.createElement('div');
+    row.className = 'manage-row';
+
+    if (editingId === h.id) {
+      row.innerHTML = `
+        <input type="text" class="edit-icon" value="${h.icon}" maxlength="4">
+        <input type="text" class="edit-label" value="${h.label}">
+        <select class="edit-freq">
+          <option value="daily" ${h.freq === 'daily' ? 'selected' : ''}>매일</option>
+          <option value="weekly" ${h.freq === 'weekly' ? 'selected' : ''}>매주</option>
+        </select>
+      `;
+      const saveBtn = document.createElement('button');
+      saveBtn.className = 'save-btn';
+      saveBtn.textContent = '저장';
+      saveBtn.addEventListener('click', () => {
+        const icon = row.querySelector('.edit-icon').value.trim() || h.icon;
+        const label = row.querySelector('.edit-label').value.trim() || h.label;
+        const freq = row.querySelector('.edit-freq').value;
+        h.icon = icon;
+        h.label = label;
+        h.freq = freq;
+        saveHabits(habits);
+        editingId = null;
+        renderManage();
+        render();
+      });
+      const cancelBtn = document.createElement('button');
+      cancelBtn.className = 'cancel-btn';
+      cancelBtn.textContent = '취소';
+      cancelBtn.addEventListener('click', () => {
+        editingId = null;
+        renderManage();
+      });
+      row.appendChild(saveBtn);
+      row.appendChild(cancelBtn);
+    } else {
+      row.innerHTML = `
+        <div class="m-icon">${h.icon}</div>
+        <div class="m-name">${h.label}${h.freq === 'weekly' ? '<span class="weeklytag">주 1회</span>' : ''}</div>
+      `;
+      const editBtn = document.createElement('button');
+      editBtn.textContent = '✏️';
+      editBtn.addEventListener('click', () => {
+        editingId = h.id;
+        renderManage();
+      });
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '🗑️';
+      delBtn.addEventListener('click', () => {
+        if (!confirm(`"${h.label}" 루틴을 삭제할까요?`)) return;
+        habits = habits.filter(x => x.id !== h.id);
+        saveHabits(habits);
+        renderManage();
+        render();
+      });
+      row.appendChild(editBtn);
+      row.appendChild(delBtn);
+    }
+
+    list.appendChild(row);
+  });
+}
+
+function addHabit() {
+  const iconInput = document.getElementById('newIcon');
+  const labelInput = document.getElementById('newLabel');
+  const freqInput = document.getElementById('newFreq');
+  const label = labelInput.value.trim();
+  if (!label) { labelInput.focus(); return; }
+  const icon = iconInput.value.trim() || '⭐';
+  const freq = freqInput.value;
+
+  habits.push({ id: makeId(), label, icon, freq });
+  saveHabits(habits);
+
+  iconInput.value = '';
+  labelInput.value = '';
+  freqInput.value = 'daily';
+
+  renderManage();
+  render();
+}
+
+document.getElementById('manageToggle').addEventListener('click', toggleManagePanel);
+document.getElementById('addHabitBtn').addEventListener('click', addHabit);
 
 render();
 </script>
