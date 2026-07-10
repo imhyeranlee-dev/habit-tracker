@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="습관트래커">
+<meta name="apple-mobile-web-app-title" content="순간을 소중히">
 <meta name="theme-color" content="#f5f3ee">
-<title>매일 루틴 트래커</title>
+<title>순간을 소중히</title>
 <style>
   :root {
     --bg: #f5f3ee;
@@ -83,6 +83,38 @@
     background: var(--accent);
     border-color: var(--accent);
     color: white;
+  }
+  .habit.book .check { display: none; }
+  .progress-bar {
+    background: #e9e9e9;
+    border-radius: 6px;
+    height: 8px;
+    margin: 6px 0 4px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    background: var(--accent);
+    height: 100%;
+    border-radius: 6px;
+  }
+  .progress-text {
+    font-size: 12px;
+    color: var(--sub);
+  }
+  .book-add-btn {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 20px;
+    padding: 8px 14px;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+  .book-done-badge {
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: 600;
+    flex-shrink: 0;
   }
   .weeklytag {
     display: inline-block;
@@ -193,7 +225,7 @@
   <header>
     <div class="date" id="todayLabel"></div>
     <div class="titlerow">
-      <h1>오늘의 루틴</h1>
+      <h1>순간을 소중히! 할 수 있다 이혜란 💪</h1>
       <button class="manage-btn" id="manageToggle">⚙️ 관리</button>
     </div>
   </header>
@@ -214,11 +246,16 @@
     <div id="manageList"></div>
     <div class="manage-add">
       <input id="newIcon" type="text" placeholder="🙂" maxlength="4">
-      <input id="newLabel" type="text" placeholder="루틴 이름">
+      <input id="newLabel" type="text" placeholder="루틴 이름 (독서는 책 제목)">
+      <select id="newKind">
+        <option value="check">체크</option>
+        <option value="book">독서(진척률)</option>
+      </select>
       <select id="newFreq">
         <option value="daily">매일</option>
         <option value="weekly">매주</option>
       </select>
+      <input id="newTotalPages" type="number" placeholder="전체 페이지" style="display:none; width:100px;">
       <button id="addHabitBtn">추가</button>
     </div>
   </div>
@@ -239,7 +276,7 @@ const DEFAULT_HABITS = [
   { id: 'water',   label: '물 500ml',       icon: '💧', freq: 'daily' },
   { id: 'english', label: '영어대화 10분',   icon: '🗣️', freq: 'daily' },
   { id: 'vitamin', label: '영양제',          icon: '💊', freq: 'daily' },
-  { id: 'reading', label: '책 5P 읽기',      icon: '📖', freq: 'daily' },
+  { id: 'reading', label: '책 제목을 입력해주세요', icon: '📖', freq: 'daily', kind: 'book', book: { totalPages: 0, currentPage: 0 } },
   { id: 'writing', label: '글쓰기',          icon: '✍️', freq: 'weekly' },
 ];
 
@@ -258,12 +295,24 @@ function saveData(data) {
 }
 
 function loadHabits() {
+  let list;
   try {
     const saved = JSON.parse(localStorage.getItem(HABITS_KEY));
-    if (Array.isArray(saved)) return saved;
-  } catch (e) {}
-  saveHabits(DEFAULT_HABITS);
-  return DEFAULT_HABITS.slice();
+    list = Array.isArray(saved) ? saved : DEFAULT_HABITS.slice();
+  } catch (e) {
+    list = DEFAULT_HABITS.slice();
+  }
+  // migrate older saved data: ensure every habit has a kind,
+  // and upgrade the default reading habit to book-progress tracking
+  list = list.map(h => {
+    if (!h.kind) h.kind = 'check';
+    if (h.id === 'reading' && h.kind !== 'book') {
+      return Object.assign({}, h, { kind: 'book', book: { totalPages: 0, currentPage: 0 } });
+    }
+    return h;
+  });
+  saveHabits(list);
+  return list;
 }
 function saveHabits(list) {
   localStorage.setItem(HABITS_KEY, JSON.stringify(list));
@@ -309,6 +358,18 @@ function toggle(habit) {
     data.weekly[k] = !data.weekly[k];
   }
   saveData(data);
+  render();
+}
+
+function logBookProgress(habit) {
+  const step = 5;
+  const total = habit.book.totalPages || 0;
+  const cap = total > 0 ? total : Infinity;
+  habit.book.currentPage = Math.min(cap, (habit.book.currentPage || 0) + step);
+  if (!data.daily[todayKey]) data.daily[todayKey] = {};
+  data.daily[todayKey][habit.id] = true;
+  saveData(data);
+  saveHabits(habits);
   render();
 }
 
@@ -365,16 +426,45 @@ function render() {
       : (streak > 0 ? `🔥 ${streak}주 연속` : '이번 주부터 시작해봐요');
 
     const row = document.createElement('div');
-    row.className = 'habit' + (done ? ' done' : '');
-    row.innerHTML = `
-      <div class="icon">${habit.icon}</div>
-      <div class="info">
-        <div class="name">${habit.label}${habit.freq === 'weekly' ? '<span class="weeklytag">주 1회</span>' : ''}</div>
-        <div class="streak">${streakLabel}</div>
-      </div>
-      <div class="check">✓</div>
-    `;
-    row.addEventListener('click', () => toggle(habit));
+    row.className = 'habit' + (done ? ' done' : '') + (habit.kind === 'book' ? ' book' : '');
+
+    if (habit.kind === 'book') {
+      const total = habit.book.totalPages || 0;
+      const raw = habit.book.currentPage || 0;
+      const current = total > 0 ? Math.min(raw, total) : raw;
+      const pct = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0;
+      const finished = total > 0 && current >= total;
+      row.innerHTML = `
+        <div class="icon">${habit.icon}</div>
+        <div class="info">
+          <div class="name">${habit.label}</div>
+          <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+          <div class="progress-text">${total > 0 ? `${current} / ${total}쪽 (${pct}%)` : '⚙ 관리에서 전체 페이지를 입력해주세요'}</div>
+        </div>
+      `;
+      if (finished) {
+        const badge = document.createElement('div');
+        badge.className = 'book-done-badge';
+        badge.textContent = '완독 🎉';
+        row.appendChild(badge);
+      } else {
+        const addBtn = document.createElement('button');
+        addBtn.className = 'book-add-btn';
+        addBtn.textContent = '+5쪽';
+        addBtn.addEventListener('click', (e) => { e.stopPropagation(); logBookProgress(habit); });
+        row.appendChild(addBtn);
+      }
+    } else {
+      row.innerHTML = `
+        <div class="icon">${habit.icon}</div>
+        <div class="info">
+          <div class="name">${habit.label}${habit.freq === 'weekly' ? '<span class="weeklytag">주 1회</span>' : ''}</div>
+          <div class="streak">${streakLabel}</div>
+        </div>
+        <div class="check">✓</div>
+      `;
+      row.addEventListener('click', () => toggle(habit));
+    }
     list.appendChild(row);
   });
 
@@ -448,24 +538,39 @@ function renderManage() {
     row.className = 'manage-row';
 
     if (editingId === h.id) {
-      row.innerHTML = `
-        <input type="text" class="edit-icon" value="${h.icon}" maxlength="4">
-        <input type="text" class="edit-label" value="${h.label}">
-        <select class="edit-freq">
-          <option value="daily" ${h.freq === 'daily' ? 'selected' : ''}>매일</option>
-          <option value="weekly" ${h.freq === 'weekly' ? 'selected' : ''}>매주</option>
-        </select>
-      `;
+      if (h.kind === 'book') {
+        row.innerHTML = `
+          <input type="text" class="edit-icon" value="${h.icon}" maxlength="4">
+          <input type="text" class="edit-label" value="${h.label}" placeholder="책 제목">
+          <input type="number" class="edit-total" value="${h.book.totalPages || 0}" placeholder="전체 페이지" min="0" style="width:100px;">
+          <input type="number" class="edit-current" value="${h.book.currentPage || 0}" placeholder="읽은 페이지" min="0" style="width:100px;">
+        `;
+      } else {
+        row.innerHTML = `
+          <input type="text" class="edit-icon" value="${h.icon}" maxlength="4">
+          <input type="text" class="edit-label" value="${h.label}">
+          <select class="edit-freq">
+            <option value="daily" ${h.freq === 'daily' ? 'selected' : ''}>매일</option>
+            <option value="weekly" ${h.freq === 'weekly' ? 'selected' : ''}>매주</option>
+          </select>
+        `;
+      }
       const saveBtn = document.createElement('button');
       saveBtn.className = 'save-btn';
       saveBtn.textContent = '저장';
       saveBtn.addEventListener('click', () => {
         const icon = row.querySelector('.edit-icon').value.trim() || h.icon;
         const label = row.querySelector('.edit-label').value.trim() || h.label;
-        const freq = row.querySelector('.edit-freq').value;
         h.icon = icon;
         h.label = label;
-        h.freq = freq;
+        if (h.kind === 'book') {
+          const total = parseInt(row.querySelector('.edit-total').value, 10);
+          const current = parseInt(row.querySelector('.edit-current').value, 10);
+          h.book.totalPages = isNaN(total) ? 0 : Math.max(0, total);
+          h.book.currentPage = isNaN(current) ? 0 : Math.max(0, current);
+        } else {
+          h.freq = row.querySelector('.edit-freq').value;
+        }
         saveHabits(habits);
         editingId = null;
         renderManage();
@@ -481,9 +586,12 @@ function renderManage() {
       row.appendChild(saveBtn);
       row.appendChild(cancelBtn);
     } else {
+      const extra = h.kind === 'book'
+        ? ` <span class="weeklytag">${h.book.currentPage || 0}/${h.book.totalPages || 0}쪽</span>`
+        : (h.freq === 'weekly' ? '<span class="weeklytag">주 1회</span>' : '');
       row.innerHTML = `
         <div class="m-icon">${h.icon}</div>
-        <div class="m-name">${h.label}${h.freq === 'weekly' ? '<span class="weeklytag">주 1회</span>' : ''}</div>
+        <div class="m-name">${h.label}${extra}</div>
       `;
       const editBtn = document.createElement('button');
       editBtn.textContent = '✏️';
@@ -508,21 +616,40 @@ function renderManage() {
   });
 }
 
+function updateAddFormVisibility() {
+  const kind = document.getElementById('newKind').value;
+  document.getElementById('newFreq').style.display = kind === 'book' ? 'none' : '';
+  document.getElementById('newTotalPages').style.display = kind === 'book' ? '' : 'none';
+}
+
 function addHabit() {
   const iconInput = document.getElementById('newIcon');
   const labelInput = document.getElementById('newLabel');
   const freqInput = document.getElementById('newFreq');
+  const kindInput = document.getElementById('newKind');
+  const totalPagesInput = document.getElementById('newTotalPages');
   const label = labelInput.value.trim();
   if (!label) { labelInput.focus(); return; }
   const icon = iconInput.value.trim() || '⭐';
-  const freq = freqInput.value;
+  const kind = kindInput.value;
 
-  habits.push({ id: makeId(), label, icon, freq });
+  if (kind === 'book') {
+    const total = parseInt(totalPagesInput.value, 10);
+    habits.push({
+      id: makeId(), label, icon, freq: 'daily', kind: 'book',
+      book: { totalPages: isNaN(total) ? 0 : Math.max(0, total), currentPage: 0 }
+    });
+  } else {
+    habits.push({ id: makeId(), label, icon, freq: freqInput.value, kind: 'check' });
+  }
   saveHabits(habits);
 
   iconInput.value = '';
   labelInput.value = '';
   freqInput.value = 'daily';
+  kindInput.value = 'check';
+  totalPagesInput.value = '';
+  updateAddFormVisibility();
 
   renderManage();
   render();
@@ -530,6 +657,7 @@ function addHabit() {
 
 document.getElementById('manageToggle').addEventListener('click', toggleManagePanel);
 document.getElementById('addHabitBtn').addEventListener('click', addHabit);
+document.getElementById('newKind').addEventListener('change', updateAddFormVisibility);
 
 render();
 </script>
