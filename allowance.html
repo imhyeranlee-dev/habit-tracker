@@ -43,6 +43,14 @@
   .task .note { display: block; font-size: 12px; color: var(--sub); margin-top: 2px; }
   .task .amt { font-weight: 700; color: var(--accent); white-space: nowrap; }
 
+  .penalty { display: flex; align-items: center; gap: 10px; background: #fdf0ec; border: 1px solid #f0cfc4;
+    border-radius: 14px; padding: 12px 14px; margin: 14px 0 8px; }
+  .penalty .name { flex: 1; font-size: 16px; }
+  .penalty .note { display: block; font-size: 12px; color: var(--sub); margin-top: 2px; }
+  .penalty .stepper { display: flex; align-items: center; gap: 8px; }
+  .penalty .stepper button { width: 34px; height: 34px; border-radius: 10px; border: 1px solid #e3b8aa; background: #fff; color: var(--danger); font-size: 20px; line-height: 1; }
+  .penalty .cnt { min-width: 22px; text-align: center; font-weight: 700; }
+  .penalty .amt { font-weight: 700; color: var(--danger); min-width: 64px; text-align: right; }
   .total { background: var(--accent); color: #fff; border-radius: 16px; padding: 16px 18px; margin: 14px 0; }
   .total .row { display: flex; justify-content: space-between; align-items: baseline; }
   .total .big { font-size: 28px; font-weight: 800; }
@@ -106,6 +114,8 @@
   <div id="edit" class="hidden">
     <div class="hint">이름과 금액을 바로 고칠 수 있어요. 금액을 바꿔도 <b>이미 체크한 지난 기록은 그때 금액 그대로</b> 유지됩니다.</div>
     <div id="editList"></div>
+    <div class="edit-row" style="margin-top:14px"><span style="flex:1">엄마한테 줄 돈 (1회당)</span>
+      <input class="am" id="penaltyAmt" type="number" inputmode="numeric" min="0" step="100"></div>
     <button class="secondary" id="addTask">+ 할 일 추가</button>
     <button class="primary" id="doneEdit">완료</button>
   </div>
@@ -127,8 +137,8 @@ let kid = 0;
 let date = ymd(new Date());
 
 function load() {
-  try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.tasks) return s; } catch (e) {}
-  return { tasks: DEFAULT_TASKS, records: {} };
+  try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.tasks) { s.penalty = s.penalty || 100; return s; } } catch (e) {}
+  return { tasks: DEFAULT_TASKS, records: {}, penalty: 100 };
 }
 function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
 
@@ -138,6 +148,16 @@ function won(n) { return n.toLocaleString('ko-KR') + '원'; }
 const $ = id => document.getElementById(id);
 
 function done(dt, k) { return (state.records[dt] && state.records[dt][k]) || {}; }
+function doneCount(dt, k) { return Object.keys(done(dt, k)).filter(id => id !== 'penalty').length; }
+function penaltyCount(dt, k) { const p = done(dt, k).penalty; return p ? p.count : 0; }
+function changePenalty(delta) {
+  const r = (state.records[date] ||= {});
+  const kr = (r[kid] ||= {});
+  const c = Math.max(0, penaltyCount(date, kid) + delta);
+  if (c === 0) delete kr.penalty;
+  else kr.penalty = { name: '엄마한테 준 돈', count: c, amount: -c * state.penalty };
+  save(); render();
+}
 function dayTotal(dt, k) { return Object.values(done(dt, k)).reduce((s, v) => s + v.amount, 0); }
 function monthTotal(month, k) {
   return Object.keys(state.records).filter(d => d.startsWith(month)).reduce((s, d) => s + dayTotal(d, k), 0);
@@ -180,7 +200,18 @@ function render() {
     $('tasks').appendChild(b);
   });
 
-  const cnt = Object.keys(mine).length;
+  const pc = penaltyCount(date, kid);
+  const pr = document.createElement('div');
+  pr.className = 'penalty';
+  pr.innerHTML = `<span class="name">엄마한테 준 돈<span class="note">약속 어길 때마다 1회 (회당 -${won(state.penalty)})</span></span>
+    <span class="stepper"><button aria-label="한 번 취소">−</button><span class="cnt">${pc}</span><button aria-label="한 번 추가">+</button></span>
+    <span class="amt">${pc ? '-' + won(pc * state.penalty) : '0원'}</span>`;
+  const [minus, plus] = pr.querySelectorAll('button');
+  minus.onclick = () => changePenalty(-1);
+  plus.onclick = () => changePenalty(1);
+  $('tasks').appendChild(pr);
+
+  const cnt = doneCount(date, kid);
   $('totalLabel').textContent = `${KIDS[kid]}의 오늘 용돈`;
   $('totalAmt').textContent = won(dayTotal(date, kid));
   $('totalSub').innerHTML = `<span>${cnt} / ${state.tasks.length} 완료</span>`;
@@ -188,7 +219,7 @@ function render() {
   const month = date.slice(0, 7);
   $('dayTitle').textContent = `${d.getMonth() + 1}월 ${d.getDate()}일 정산`;
   $('dayTable').innerHTML = '<tr><th></th><th>완료</th><th>용돈</th></tr>' +
-    KIDS.map((n, i) => `<tr><td>${n}</td><td>${Object.keys(done(date, i)).length}개</td><td>${won(dayTotal(date, i))}</td></tr>`).join('') +
+    KIDS.map((n, i) => `<tr><td>${n}</td><td>${doneCount(date, i)}개</td><td>${won(dayTotal(date, i))}</td></tr>`).join('') +
     `<tr><td>합계</td><td></td><td>${won(KIDS.reduce((s, _, i) => s + dayTotal(date, i), 0))}</td></tr>`;
   $('monthTitle').textContent = `${d.getMonth() + 1}월 누적`;
   $('monthTable').innerHTML = KIDS.map((n, i) => `<tr><td>${n}</td><td>${won(monthTotal(month, i))}</td></tr>`).join('') +
@@ -223,12 +254,13 @@ function renderEdit() {
     $('editList').appendChild(w);
   });
 }
+$('penaltyAmt').oninput = () => { state.penalty = Math.max(0, parseInt($('penaltyAmt').value, 10) || 0); save(); };
 $('addTask').onclick = () => {
   state.tasks.push({ id: 't' + Date.now(), name: '', amount: 100, note: '' });
   save(); renderEdit();
   const n = $('editList').querySelectorAll('.nm'); n[n.length - 1].focus();
 };
-$('editBtn').onclick = () => { $('main').classList.add('hidden'); $('edit').classList.remove('hidden'); renderEdit(); };
+$('editBtn').onclick = () => { $('main').classList.add('hidden'); $('edit').classList.remove('hidden'); renderEdit(); $('penaltyAmt').value = state.penalty; };
 $('doneEdit').onclick = () => { $('edit').classList.add('hidden'); $('main').classList.remove('hidden'); render(); window.scrollTo(0, 0); };
 
 render();
