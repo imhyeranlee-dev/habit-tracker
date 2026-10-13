@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="용돈 체크">
+<meta name="theme-color" content="#fff8ec">
+<title>용돈 체크</title>
+<style>
+  :root {
+    --bg: #fff8ec; --card: #fff; --text: #2b2b2b; --sub: #8a8a8a;
+    --accent: #e8913a; --accent-soft: #fdebd3; --border: #eee3d0; --danger: #c96a4f;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
+  body { display: flex; justify-content: center; padding: 16px 16px 48px; }
+  .app { width: 100%; max-width: 480px; }
+  h1 { font-size: 22px; text-align: center; margin: 8px 0 14px; }
+  button { font: inherit; cursor: pointer; }
+
+  .datebar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .datebar button { background: var(--card); border: 1px solid var(--border); border-radius: 12px; width: 40px; height: 40px; font-size: 18px; }
+  .datebar .mid { text-align: center; }
+  .datebar .mid .d { font-size: 17px; font-weight: 700; }
+  .datebar .mid .today { font-size: 12px; color: var(--accent); background: none; border: none; padding: 2px; }
+
+  .tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+  .tab { flex: 1; background: var(--card); border: 2px solid var(--border); border-radius: 14px; padding: 10px 4px; text-align: center; }
+  .tab .n { font-weight: 700; font-size: 16px; }
+  .tab .m { font-size: 12px; color: var(--sub); margin-top: 2px; }
+  .tab.active { border-color: var(--accent); background: var(--accent-soft); }
+  .tab.active .m { color: var(--accent); font-weight: 700; }
+
+  .task { display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 12px 14px; margin-bottom: 8px; width: 100%; text-align: left; }
+  .task .box { width: 28px; height: 28px; border-radius: 8px; border: 2px solid #d9cdb8; flex: none;
+    display: flex; align-items: center; justify-content: center; color: #fff; font-size: 18px; }
+  .task.done { background: var(--accent-soft); border-color: var(--accent); }
+  .task.done .box { background: var(--accent); border-color: var(--accent); }
+  .task .name { flex: 1; font-size: 16px; }
+  .task .note { display: block; font-size: 12px; color: var(--sub); margin-top: 2px; }
+  .task .amt { font-weight: 700; color: var(--accent); white-space: nowrap; }
+
+  .total { background: var(--accent); color: #fff; border-radius: 16px; padding: 16px 18px; margin: 14px 0; }
+  .total .row { display: flex; justify-content: space-between; align-items: baseline; }
+  .total .big { font-size: 28px; font-weight: 800; }
+  .total .small { font-size: 13px; opacity: .9; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 14px 16px; margin-bottom: 14px; }
+  .card h2 { font-size: 15px; margin: 0 0 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 7px 4px; text-align: right; border-bottom: 1px solid var(--border); }
+  th:first-child, td:first-child { text-align: left; }
+  tr:last-child td { border-bottom: none; font-weight: 700; }
+
+  .link { display: block; margin: 8px auto 0; background: none; border: 1px solid var(--border); border-radius: 20px;
+    padding: 8px 16px; color: var(--sub); font-size: 14px; }
+
+  /* edit mode */
+  .edit-row { display: flex; gap: 6px; margin-bottom: 8px; align-items: center; }
+  .edit-row input { border: 1px solid var(--border); border-radius: 10px; padding: 10px; font: inherit; font-size: 15px; background: #fff; min-width: 0; }
+  .edit-row .nm { flex: 1; }
+  .edit-row .am { width: 72px; text-align: right; }
+  .edit-row .nt { width: 100%; font-size: 13px; }
+  .edit-row .del { background: none; border: none; color: var(--danger); font-size: 18px; padding: 4px 6px; }
+  .edit-item { margin-bottom: 10px; }
+  .primary { width: 100%; background: var(--accent); color: #fff; border: none; border-radius: 12px; padding: 12px; font-weight: 700; margin-top: 6px; }
+  .secondary { width: 100%; background: var(--card); color: var(--accent); border: 1px solid var(--accent); border-radius: 12px; padding: 12px; font-weight: 700; margin-top: 6px; }
+  .hint { font-size: 12px; color: var(--sub); margin: 6px 2px 12px; line-height: 1.5; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>🪙 오늘의 용돈 체크</h1>
+
+  <!-- 메인 화면 -->
+  <div id="main">
+    <div class="datebar">
+      <button id="prev" aria-label="전날">‹</button>
+      <div class="mid"><div class="d" id="dateLabel"></div><button class="today" id="goToday">오늘로</button></div>
+      <button id="next" aria-label="다음날">›</button>
+    </div>
+    <div class="tabs" id="tabs"></div>
+    <div id="tasks"></div>
+
+    <div class="total">
+      <div class="row"><span class="small" id="totalLabel"></span><span class="big" id="totalAmt"></span></div>
+      <div class="row small" id="totalSub"></div>
+    </div>
+
+    <div class="card">
+      <h2 id="dayTitle"></h2>
+      <table id="dayTable"></table>
+    </div>
+    <div class="card">
+      <h2 id="monthTitle"></h2>
+      <table id="monthTable"></table>
+    </div>
+    <button class="link" id="editBtn">⚙️ 할 일 · 금액 수정</button>
+  </div>
+
+  <!-- 수정 화면 -->
+  <div id="edit" class="hidden">
+    <div class="hint">이름과 금액을 바로 고칠 수 있어요. 금액을 바꿔도 <b>이미 체크한 지난 기록은 그때 금액 그대로</b> 유지됩니다.</div>
+    <div id="editList"></div>
+    <button class="secondary" id="addTask">+ 할 일 추가</button>
+    <button class="primary" id="doneEdit">완료</button>
+  </div>
+</div>
+
+<script>
+const KIDS = ['동화', '제하', '주하'];
+const KEY = 'allowance-v1';
+const DEFAULT_TASKS = [
+  ['바닥 쓰레기 줍기', 100], ['장난감 정리하기', 100], ['저녁밥 스스로 먹기', 100],
+  ['선생님 말씀에 "네" 하기', 100, '안 지키면 엄마한테 100원 주기'],
+  ['자기 이불 정리', 100], ['마이타민 챙겨먹기', 100], ['식탁 위 정리하기', 100],
+  ['식탁 닦기', 500], ['하루동안 안싸우기', 100, '싸울 때마다 엄마한테 100원 주기'],
+  ['멜집가방 정리하기', 100],
+].map(([name, amount, note], i) => ({ id: 't' + (i + 1), name, amount, note: note || '' }));
+
+let state = load();
+let kid = 0;
+let date = ymd(new Date());
+
+function load() {
+  try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.tasks) return s; } catch (e) {}
+  return { tasks: DEFAULT_TASKS, records: {} };
+}
+function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+
+function ymd(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function parse(s) { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); }
+function won(n) { return n.toLocaleString('ko-KR') + '원'; }
+const $ = id => document.getElementById(id);
+
+function done(dt, k) { return (state.records[dt] && state.records[dt][k]) || {}; }
+function dayTotal(dt, k) { return Object.values(done(dt, k)).reduce((s, v) => s + v.amount, 0); }
+function monthTotal(month, k) {
+  return Object.keys(state.records).filter(d => d.startsWith(month)).reduce((s, d) => s + dayTotal(d, k), 0);
+}
+
+function toggle(t) {
+  const r = (state.records[date] ||= {});
+  const kr = (r[kid] ||= {});
+  if (kr[t.id]) delete kr[t.id]; else kr[t.id] = { name: t.name, amount: t.amount };
+  save(); render();
+}
+
+function render() {
+  const d = parse(date);
+  const days = ['일', '월', '화', '수', '목', '금', '토'];
+  $('dateLabel').textContent = `${d.getMonth() + 1}월 ${d.getDate()}일 (${days[d.getDay()]})`;
+  $('goToday').style.visibility = date === ymd(new Date()) ? 'hidden' : 'visible';
+
+  $('tabs').innerHTML = '';
+  KIDS.forEach((n, i) => {
+    const b = document.createElement('button');
+    b.className = 'tab' + (i === kid ? ' active' : '');
+    b.innerHTML = `<div class="n">${n}</div><div class="m">${won(dayTotal(date, i))}</div>`;
+    b.onclick = () => { kid = i; render(); };
+    $('tabs').appendChild(b);
+  });
+
+  const mine = done(date, kid);
+  $('tasks').innerHTML = '';
+  state.tasks.forEach(t => {
+    const b = document.createElement('button');
+    const on = !!mine[t.id];
+    b.className = 'task' + (on ? ' done' : '');
+    b.innerHTML = `<span class="box">${on ? '✓' : ''}</span>
+      <span class="name"></span><span class="amt">${won(on ? mine[t.id].amount : t.amount)}</span>`;
+    const nm = b.querySelector('.name');
+    nm.textContent = t.name;
+    if (t.note) { const s = document.createElement('span'); s.className = 'note'; s.textContent = t.note; nm.appendChild(s); }
+    b.onclick = () => toggle(t);
+    $('tasks').appendChild(b);
+  });
+
+  const cnt = Object.keys(mine).length;
+  $('totalLabel').textContent = `${KIDS[kid]}의 오늘 용돈`;
+  $('totalAmt').textContent = won(dayTotal(date, kid));
+  $('totalSub').innerHTML = `<span>${cnt} / ${state.tasks.length} 완료</span>`;
+
+  const month = date.slice(0, 7);
+  $('dayTitle').textContent = `${d.getMonth() + 1}월 ${d.getDate()}일 정산`;
+  $('dayTable').innerHTML = '<tr><th></th><th>완료</th><th>용돈</th></tr>' +
+    KIDS.map((n, i) => `<tr><td>${n}</td><td>${Object.keys(done(date, i)).length}개</td><td>${won(dayTotal(date, i))}</td></tr>`).join('') +
+    `<tr><td>합계</td><td></td><td>${won(KIDS.reduce((s, _, i) => s + dayTotal(date, i), 0))}</td></tr>`;
+  $('monthTitle').textContent = `${d.getMonth() + 1}월 누적`;
+  $('monthTable').innerHTML = KIDS.map((n, i) => `<tr><td>${n}</td><td>${won(monthTotal(month, i))}</td></tr>`).join('') +
+    `<tr><td>합계</td><td>${won(KIDS.reduce((s, _, i) => s + monthTotal(month, i), 0))}</td></tr>`;
+}
+
+function shift(n) { const d = parse(date); d.setDate(d.getDate() + n); date = ymd(d); render(); }
+$('prev').onclick = () => shift(-1);
+$('next').onclick = () => shift(1);
+$('goToday').onclick = () => { date = ymd(new Date()); render(); };
+
+// ---- 수정 화면 ----
+function renderEdit() {
+  $('editList').innerHTML = '';
+  state.tasks.forEach((t, idx) => {
+    const w = document.createElement('div');
+    w.className = 'edit-item';
+    w.innerHTML = `<div class="edit-row">
+        <input class="nm" placeholder="할 일" value="">
+        <input class="am" type="number" inputmode="numeric" min="0" step="100">
+        <button class="del" aria-label="삭제">🗑</button>
+      </div>
+      <div class="edit-row"><input class="nt" placeholder="메모 (선택)" value=""></div>`;
+    const nm = w.querySelector('.nm'), am = w.querySelector('.am'), nt = w.querySelector('.nt');
+    nm.value = t.name; am.value = t.amount; nt.value = t.note || '';
+    nm.oninput = () => { t.name = nm.value; save(); };
+    am.oninput = () => { t.amount = Math.max(0, parseInt(am.value, 10) || 0); save(); };
+    nt.oninput = () => { t.note = nt.value; save(); };
+    w.querySelector('.del').onclick = () => {
+      if (confirm(`"${t.name || '이 항목'}"을(를) 삭제할까요?\n(지난 기록은 유지됩니다)`)) { state.tasks.splice(idx, 1); save(); renderEdit(); }
+    };
+    $('editList').appendChild(w);
+  });
+}
+$('addTask').onclick = () => {
+  state.tasks.push({ id: 't' + Date.now(), name: '', amount: 100, note: '' });
+  save(); renderEdit();
+  const n = $('editList').querySelectorAll('.nm'); n[n.length - 1].focus();
+};
+$('editBtn').onclick = () => { $('main').classList.add('hidden'); $('edit').classList.remove('hidden'); renderEdit(); };
+$('doneEdit').onclick = () => { $('edit').classList.add('hidden'); $('main').classList.remove('hidden'); render(); window.scrollTo(0, 0); };
+
+render();
+</script>
+</body>
+</html>
